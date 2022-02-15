@@ -1,104 +1,192 @@
+import 'dart:async';
+
 import 'package:fl_location/fl_location.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+
+import 'db_helper.dart';
+import 'location_user_model.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  initializeService();
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+final DatabaseHelper _databaseHelper = DatabaseHelper();
+
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: true,
+      isForegroundMode: true,
+    ),
+    iosConfiguration: IosConfiguration(
+      autoStart: true,
+      onForeground: onStart,
+      onBackground: onIosBackground,
+    ),
+  );
+}
+
+void onIosBackground() {
+  WidgetsFlutterBinding.ensureInitialized();
+}
+
+void onStart() {
+  WidgetsFlutterBinding.ensureInitialized();
+  final service = FlutterBackgroundService();
+  service.onDataReceived.listen((event) {
+    if (event!["action"] == "setAsForeground") {
+      service.setForegroundMode(true);
+      return;
+    }
+
+    if (event["action"] == "setAsBackground") {
+      service.setForegroundMode(false);
+    }
+
+    if (event["action"] == "stopService") {
+      service.stopBackgroundService();
+    }
+  });
+
+  service.setForegroundMode(true);
+  Timer.periodic(const Duration(seconds: 1), (timer) async {
+    if (!(await service.isServiceRunning())) timer.cancel();
+    service.setNotificationInfo(
+      title: "My App Service",
+      content: "Updated at ${DateTime.now()}",
+    );
+
+    await _databaseHelper.saveUser(
+      LocationUserModel(
+        id: 0,
+        latitude: 0,
+        longitude: 0,
+      ),
+    );
+
+    service.sendData(
+      {
+        "current_date": DateTime.now().toIso8601String(),
+      },
+    );
+  });
+}
+
+class MyApp extends StatefulWidget {
   const MyApp({Key? key}) : super(key: key);
 
-  // This widget is the root of your application.
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  String text = "Stop Service";
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
-        primarySwatch: Colors.blue,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('Service App'),
+        ),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const <Widget>[],
+          children: [
+            StreamBuilder<Map<String, dynamic>?>(
+              stream: FlutterBackgroundService().onDataReceived,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
+                final data = snapshot.data!;
+                DateTime? date = DateTime.tryParse(data["current_date"]);
+                return Text(date.toString());
+              },
+            ),
+            // ElevatedButton(
+            //   child: Text("Foreground Mode"),
+            //   onPressed: () {
+            //     FlutterBackgroundService()
+            //         .sendData({"action": "setAsForeground"});
+            //   },
+            // ),
+            // ElevatedButton(
+            //   child: Text("Background Mode"),
+            //   onPressed: () {
+            //     FlutterBackgroundService()
+            //         .sendData({"action": "setAsBackground"});
+            //   },
+            // ),
+            ElevatedButton(
+              child: Text(text),
+              onPressed: () async {
+                final service = FlutterBackgroundService();
+                var isRunning = await service.isServiceRunning();
+                if (isRunning) {
+                  service.sendData(
+                    {"action": "stopService"},
+                  );
+                } else {
+                  service.start();
+                }
+
+                if (!isRunning) {
+                  text = 'Stop Service';
+                } else {
+                  text = 'Start Service';
+                }
+                setState(() {});
+              },
+            ),
+          ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _getLocation();
-        },
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+
+  Future<bool> _checkAndRequestPermission({bool? background}) async {
+    if (!await FlLocation.isLocationServicesEnabled) {
+      // Location services are disabled.
+      return false;
+    }
+
+    var locationPermission = await FlLocation.checkLocationPermission();
+    if (locationPermission == LocationPermission.deniedForever) {
+      // Cannot request runtime permission because location permission is denied forever.
+      return false;
+    } else if (locationPermission == LocationPermission.denied) {
+      // Ask the user for location permission.
+      locationPermission = await FlLocation.requestLocationPermission();
+      if (locationPermission == LocationPermission.denied ||
+          locationPermission == LocationPermission.deniedForever) return false;
+    }
+
+    // Location permission must always be allowed (LocationPermission.always)
+    // to collect location data in the background.
+    if (background == true &&
+        locationPermission == LocationPermission.whileInUse) return false;
+
+    // Location services has been enabled and permission have been granted.
+    return true;
   }
 
   Future<void> _getLocation() async {
     if (await _checkAndRequestPermission()) {
-      const timeLimit = Duration(seconds: 10);
+      final timeLimit = const Duration(seconds: 10);
       await FlLocation.getLocation(timeLimit: timeLimit).then((location) {
         print('location: ${location.toJson().toString()}');
       }).onError((error, stackTrace) {
         print('error: ${error.toString()}');
       });
     }
-  }
-
-  Future<bool> _checkAndRequestPermission({bool? background}) async {
-    if (!await FlLocation.isLocationServicesEnabled) {
-      return false;
-    }
-
-    var locationPermission = await FlLocation.checkLocationPermission();
-    if (locationPermission == LocationPermission.deniedForever) {
-      return false;
-    } else if (locationPermission == LocationPermission.denied) {
-      locationPermission = await FlLocation.requestLocationPermission();
-      if (locationPermission == LocationPermission.denied ||
-          locationPermission == LocationPermission.deniedForever) return false;
-    }
-
-    if (background == true &&
-        locationPermission == LocationPermission.whileInUse) return false;
-
-    return true;
   }
 }
