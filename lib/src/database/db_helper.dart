@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
-import 'location_user_model.dart';
+import '../model/location_user_model.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper.internal();
@@ -34,6 +34,7 @@ class DatabaseHelper {
       'CREATE TABLE userList('
       'id INTEGER PRIMARY KEY AUTOINCREMENT, '
       'latitude REAL, '
+      'current_time TEXT, '
       'longitude REAL)',
     );
   }
@@ -57,6 +58,7 @@ class DatabaseHelper {
         id: list[i]["id"],
         latitude: list[i]["latitude"],
         longitude: list[i]["longitude"],
+        currentTime: list[i]["current_time"],
       );
       users.add(data);
     }
