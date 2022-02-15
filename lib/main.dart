@@ -54,13 +54,12 @@ void onStart() {
   });
 
   service.setForegroundMode(true);
-  Timer.periodic(const Duration(seconds: 1), (timer) async {
+  Timer.periodic(const Duration(seconds: 10), (timer) async {
     if (!(await service.isServiceRunning())) timer.cancel();
     service.setNotificationInfo(
       title: "My App Service",
       content: "Updated at ${DateTime.now()}",
     );
-    //_getLocation();
 
     service.sendData(
       {

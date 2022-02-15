@@ -59,6 +59,14 @@ class _InfoScreenState extends State<InfoScreen> {
                         ),
                       ),
                       Spacer(),
+                      Text(
+                        data[index].currentTime,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Spacer(),
                     ],
                   ),
                 );

@@ -1,5 +1,7 @@
+import 'package:bac_news/src/bloc/user_block.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:location/location.dart';
 
 import 'info_screen.dart';
 
@@ -12,6 +14,13 @@ class SaveLocationScreen extends StatefulWidget {
 
 class _SaveLocationScreenState extends State<SaveLocationScreen> {
   String text = "Stop Service";
+  Location location = Location();
+
+  @override
+  void initState() {
+    location.enableBackgroundMode();
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +61,14 @@ class _SaveLocationScreenState extends State<SaveLocationScreen> {
                     child: CircularProgressIndicator(),
                   );
                 }
+                location.getLocation().then(
+                      (value) => {
+                        userBloc.saveLocation(
+                          value.latitude ?? 0.0,
+                          value.longitude ?? 0.0,
+                        ),
+                      },
+                    );
                 final data = snapshot.data!;
                 DateTime? date = DateTime.tryParse(data["current_date"]);
                 return Text(date.toString());
